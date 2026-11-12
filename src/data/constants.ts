@@ -9,6 +9,18 @@ export const SOCIAL_LINKS = {
   email: "mailto:devgarg771@gmail.com",
 };
 
+export const PROFILE = {
+  name: "Dev Garg",
+  role: "Software Engineer at Zime",
+  location: "Delhi NCR, India",
+  tagline:
+    "I work on sign-in, infrastructure and AI features at Zime, a sales intelligence platform, and build small full-stack apps on the side.",
+  email: "devgarg771@gmail.com",
+};
+
+// Live numbers come from the data files my GitHub profile repo refreshes every morning.
+export const LIVE_DATA_BASE = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_USERNAME}/main/data`;
+
 export const TECH_STACK = [
   { name: "TypeScript", icon: "typescript/typescript-original" },
   { name: "JavaScript", icon: "javascript/javascript-original" },
@@ -56,11 +68,47 @@ export interface Project {
   techStack: string[];
   github: string | null;
   live: string | null;
+  /** extra lines shown on the console screen */
+  notes?: string[];
 }
 
 export const INITIAL_PROJECTS_COUNT = 4;
 
+/** Hidden cartridge: locked in the reel until someone enters the Konami code on the console. */
+export const SECRET_PROJECT: Project = {
+  title: "This website",
+  description: "You found the cheat code. Here's how this site works under the hood.",
+  year: "2026",
+  techStack: ["react/react-original", "typescript/typescript-original", "github/github-original"],
+  github: "https://github.com/Dev771/Dev-Portfolio",
+  live: null,
+  notes: [
+    "Numbers: a GitHub Action on my profile repo saves my contributions and languages every morning. This page reads those files, and falls back to a bundled copy if GitHub is slow.",
+    "Commit city: one SVG building per week and one window per day, worked out in the browser from that data.",
+    "Sprite: a small Python script shrinks my avatar to a 51 by 61 pixel grid with a 16-colour palette.",
+    "Fonts: Tiny5 for text and Jersey 10 for numbers. Pixelify only appears at heading size, because its small letters are easy to misread.",
+    "Built with React 19, TypeScript and Vite, with no UI library. Every control works from the keyboard and motion stops if your system asks for less.",
+  ],
+};
+
+export const SECRET_CODE = ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"] as const;
+export type CodeInput = (typeof SECRET_CODE)[number];
+
 export const PROJECTS: Project[] = [
+  {
+    title: "Kharcha",
+    description:
+      "Split expenses with friends or flatmates: group ledgers, live balances, settle-ups and exports. A Turborepo monorepo with a NestJS, Prisma and Redis backend.",
+    year: "2026",
+    techStack: [
+      "typescript/typescript-original",
+      "nestjs/nestjs-original",
+      "nextjs/nextjs-original",
+      "postgresql/postgresql-original",
+    ],
+    github: "https://github.com/Dev771/Kharcha",
+    live: "https://kharcha-client.vercel.app",
+  },
   {
     title: "Zime AI – Enterprise B2B Platform",
     description:
@@ -142,7 +190,7 @@ export const PROJECTS: Project[] = [
       "nodejs/nodejs-original",
     ],
     github: "https://github.com/Dev771/Project-Management-Dashboard",
-    live: null,
+    live: "https://project-management-dashboard-pied.vercel.app",
   },
   {
     title: "EduHub",
@@ -226,18 +274,21 @@ export const PROJECTS: Project[] = [
 export const EXPERIENCES: Experience[] = [
   {
     company: "Zime AI",
-    role: "Full Stack Developer",
+    role: "Software Engineer",
     type: "Full Time",
     location: "Gurugram, Haryana",
     startDate: "Mar 2025",
     endDate: null,
     points: [
-      "Led full-stack development for enterprise B2B platform overhaul, architecting scalable application using Next.js and Nest.js, resulting in 50% faster load times and 35% improved user retention",
-      "Implemented multi-tenant security architecture using Keycloak IAM, enabling organization-level domain isolation and reducing security vulnerabilities by 80%",
-      "Migrated legacy Ruby codebase to Node.js microservices, improving code maintainability by 60% and reducing deployment time through modular design",
-      "Integrated Strapi CMS for dynamic content management, reducing developer intervention for content updates by 75%",
-      "Optimized search with Elasticsearch, achieving 90% reduction in query response time (2.5s to 250ms) handling 10,000+ concurrent requests",
-      "Enhanced SEO through Next.js SSR, improving organic search visibility by 40% with FCP under 1.2 seconds",
+      "Built the Zime MCP connector, so people can ask about their sales calls from Claude, ChatGPT and Gemini.",
+      "Shipped the Microsoft Teams integration: Teams meetings are now recorded and analysed in Zime like Zoom calls.",
+      "Built multi-tenant sign-in on Keycloak. Each customer organisation gets its own isolated domain, and one SSO flow, Microsoft Entra ID included, covers every customer workspace.",
+      "Added scheduled answers to Ask Zime, delivered by email, Slack or Teams, and /skill commands for questions people ask again and again.",
+      "Led the rebuild of Zime's B2B platform on Next.js and NestJS. Pages load 50% faster and user retention rose 35%.",
+      "Rebuilt search on Elasticsearch: queries went from 2.5s to 250ms at 10,000+ concurrent requests.",
+      "Moved legacy Ruby services to Node.js microservices that deploy independently on AWS EKS through ArgoCD.",
+      "Set up Strapi CMS so content changes no longer need a developer, cutting developer time on content updates by 75%.",
+      "Server-rendered the public pages in Next.js for first paint under 1.2s and 40% more organic search visibility.",
     ],
     techStack: [
       "nextjs/nextjs-original",
@@ -257,11 +308,11 @@ export const EXPERIENCES: Experience[] = [
     startDate: "Oct 2024",
     endDate: "Mar 2025",
     points: [
-      "Launched an AI Sales Agent Hub managing 1000+ concurrent calls at <75ms latency across WhatsApp, email, SMS, and voice, achieving 30% higher lead conversion",
-      "Engineered a multilingual AI Interview Platform using OpenAI APIs and Microsoft Speech SDK, completing 25,000+ interviews across 55+ languages with <100ms response times",
-      "Designed real-time conversational UI using React and WebSockets for interviewer and sales agent bots",
-      "Audited and refined the dependency tree, eliminating conflicts and cutting build time by 40%",
-      "Integrated Microsoft Speech SDK for speech-to-text and analytics, reducing interview duration by 50%",
+      "Launched an AI sales agent hub running 1,000+ concurrent conversations across WhatsApp, email, SMS and voice at under 75ms. Lead conversion rose 30%.",
+      "Built an AI interview platform on OpenAI and the Microsoft Speech SDK that has run 25,000+ interviews in 55+ languages, responding in under 100ms.",
+      "Designed the real-time chat UI for both bots in React over WebSockets.",
+      "Added speech-to-text and analytics with the Microsoft Speech SDK, halving interview length.",
+      "Untangled the dependency tree, removing version conflicts and cutting build time by 40%.",
     ],
     techStack: [
       "react/react-original",
@@ -279,10 +330,9 @@ export const EXPERIENCES: Experience[] = [
     startDate: "Mar 2023",
     endDate: "Oct 2024",
     points: [
-      "Collaborated with cross-functional teams to deliver scalable and maintainable software solutions across multiple projects",
-      "Engineered seamless transition to Microservice Architecture, resulting in 30% reduction in system maintenance costs",
-      "Utilized RabbitMQ and Docker to streamline deployment processes and CI/CD pipelines, reducing deployment time by 50%",
-      "Led development of key mobile application using React Native, increasing user engagement by 35%",
+      "Split a monolith into Spring Boot microservices, cutting maintenance costs by 30%.",
+      "Used Docker and RabbitMQ to simplify deployments and CI/CD, halving deployment time.",
+      "Led a React Native mobile app that raised user engagement by 35%.",
     ],
     techStack: [
       "react/react-original",
@@ -305,14 +355,14 @@ export interface Education {
 
 export const EDUCATION: Education[] = [
   {
-    institution: "Bharati Vidhyapeeth Institute of Computer Applications and Management",
+    institution: "Bharati Vidyapeeth Institute of Computer Applications and Management",
     degree: "Masters of Computer Applications (MCA)",
     gpa: "9.2/10",
     startDate: "2021",
     endDate: "2023",
   },
   {
-    institution: "Bharati Vidhyapeeth Institute of Management and Research",
+    institution: "Bharati Vidyapeeth Institute of Management and Research",
     degree: "Bachelor's of Computer Application (BCA)",
     gpa: "8.6/10",
     startDate: "2018",

@@ -1,67 +1,341 @@
-import { useState } from "react";
-import { PROJECTS, DEVICON_BASE, INITIAL_PROJECTS_COUNT } from "../data/constants";
-import "./Projects.css";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { PROJECTS, SECRET_CODE, SECRET_PROJECT, type CodeInput, type Project } from "../data/constants";
+import { gem, techName } from "../lib/tech";
+import Console from "./Console";
+import PixelIcon from "./PixelIcon";
 
-export default function Projects() {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? PROJECTS : PROJECTS.slice(0, INITIAL_PROJECTS_COUNT);
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "side", label: "Side projects" },
+  { id: "work", label: "At work" },
+] as const;
+
+type Filter = (typeof FILTERS)[number]["id"];
+
+interface Item {
+  p: Project;
+  accent: number;
+  locked: boolean;
+  secret: boolean;
+}
+
+const isWork = (p: Project) => !p.github && !p.live;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const FIRE_MS = 460;
+
+interface Props {
+  loaded: string | null;
+  onLoad: (title: string | null) => void;
+  unlocked: boolean;
+  onUnlock: () => void;
+}
+
+/** Projects as cartridges on a spinning reel. Fire the one in front into the console. */
+export default function Projects({ loaded, onLoad, unlocked, onUnlock }: Props) {
+  const [filter, setFilter] = useState<Filter>("all");
+  // `prev` lets each cartridge tell a one-step move (animate) from a wrap-around jump (don't).
+  const [pos, setPos] = useState({ index: 0, prev: 0 });
+  const [firing, setFiring] = useState(false);
+  const [spinning, setSpinning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [lockedNotice, setLockedNotice] = useState(false);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const reelRef = useRef<HTMLDivElement>(null);
+  const timers = useRef<number[]>([]);
+  const noticeTimer = useRef<number | undefined>(undefined);
+  const swipe = useRef<{ x: number; moved: boolean } | null>(null);
+
+  const list = useMemo<Item[]>(() => {
+    const all: Item[] = [
+      ...PROJECTS.map((p, i) => ({ p, accent: i % 3, locked: false, secret: false })),
+      // last in the reel, so on a wheel it sits right next to the first project
+      { p: SECRET_PROJECT, accent: PROJECTS.length % 3, locked: !unlocked, secret: true },
+    ];
+    return all.filter(({ p, secret }) =>
+      filter === "all" ? true : filter === "work" ? !secret && isWork(p) : secret || !isWork(p),
+    );
+  }, [filter, unlocked]);
+  const n = list.length;
+  const index = pos.index % n;
+  const current = list[index];
+  const busy = firing || spinning;
+
+  useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
+
+  const go = (next: number) => setPos((p) => ({ index: ((next % n) + n) % n, prev: p.index }));
+  const step = (d: number) => setPos((p) => ({ index: (((p.index + d) % n) + n) % n, prev: p.index }));
+
+  const offset = (i: number, from: number) => {
+    let o = (((i - from) % n) + n) % n;
+    if (o > n / 2) o -= n;
+    return o;
+  };
+
+  const showConsole = () => consoleRef.current?.scrollIntoView({ block: "nearest" });
+
+  const showLocked = () => {
+    setLockedNotice(true);
+    showConsole();
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setLockedNotice(false), 6000);
+  };
+
+  const fire = () => {
+    if (busy || !current) return;
+    if (current.locked) return showLocked();
+    const title = current.p.title;
+    const land = () => {
+      setLockedNotice(false);
+      onLoad(title);
+      showConsole();
+    };
+    if (reducedMotion()) return land();
+    setFiring(true);
+    timers.current.push(
+      window.setTimeout(() => {
+        setFiring(false);
+        land();
+      }, FIRE_MS),
+    );
+  };
+
+  /** Console buttons. They do their normal job and also count towards the cheat code. */
+  const input = (key: CodeInput) => {
+    const hit = SECRET_CODE[progress] === key;
+    const next = hit ? progress + 1 : key === SECRET_CODE[0] ? 1 : 0;
+    if (next === SECRET_CODE.length) {
+      setProgress(0);
+      onUnlock();
+      return; // the final A unlocks instead of firing
+    }
+    setProgress(next);
+    if (key === "left" && !busy) step(-1);
+    if (key === "right" && !busy) step(1);
+    if (key === "b") {
+      setLockedNotice(false);
+      onLoad(null);
+    }
+    if (key === "a") fire();
+  };
+
+  const spin = () => {
+    if (busy || n < 2) return;
+    const target = Math.floor(Math.random() * n);
+    if (reducedMotion()) return go(target);
+    // at least one full turn, slowing down like a roulette wheel
+    const total = n + ((target - index + n) % n);
+    setSpinning(true);
+    let t = 0;
+    for (let k = 1; k <= total; k++) {
+      const done = k / total;
+      t += 45 + 240 * done * done;
+      timers.current.push(
+        window.setTimeout(() => {
+          step(1);
+          if (k === total) setSpinning(false);
+        }, t),
+      );
+    }
+  };
+
+  // Mouse wheel turns the reel. Needs a non-passive listener so the page doesn't scroll at the same time.
+  const stepRef = useRef(step);
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    stepRef.current = step;
+    busyRef.current = busy;
+  });
+  useEffect(() => {
+    const el = reelRef.current;
+    if (!el) return;
+    let acc = 0;
+    let last = 0;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (busyRef.current) return;
+      acc += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const now = performance.now();
+      if (Math.abs(acc) >= 40 && now - last > 150) {
+        stepRef.current(acc > 0 ? 1 : -1);
+        acc = 0;
+        last = now;
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    swipe.current = { x: e.clientX, moved: false };
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const s = swipe.current;
+    if (!s || busy) return;
+    const dx = e.clientX - s.x;
+    if (Math.abs(dx) > 56) {
+      step(dx < 0 ? 1 : -1);
+      swipe.current = { x: e.clientX, moved: true };
+    }
+  };
+  const onPointerUp = () => {
+    // keep `moved` until the click that follows this pointerup has been handled
+    window.setTimeout(() => (swipe.current = null), 0);
+  };
+
+  const keys = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (busy) return;
+    const actions: Record<string, () => void> = {
+      ArrowLeft: () => step(-1),
+      ArrowRight: () => step(1),
+      Home: () => go(0),
+      End: () => go(n - 1),
+      Enter: fire,
+      " ": fire,
+    };
+    const action = actions[e.key];
+    if (!action) return;
+    e.preventDefault();
+    action();
+  };
+
+  const loadedProject = loaded === SECRET_PROJECT.title ? SECRET_PROJECT : (PROJECTS.find((p) => p.title === loaded) ?? null);
+  const loadedAccent = loadedProject ? (loadedProject === SECRET_PROJECT ? PROJECTS.length : PROJECTS.indexOf(loadedProject)) % 3 : 0;
+  const hideFar = n <= 4 ? 1 : 2; // with few cartridges, only show direct neighbours
+  const label = (item: Item) => (item.locked ? "Locked cartridge" : item.p.title);
 
   return (
-    <section className="projects-section" id="projects">
-      <h2 className="projects-title">Projects</h2>
-      <div className="projects-grid">
-        {visible.map((project) => (
-          <article className="project-card" key={project.title}>
-            <div className="project-preview">
-              <span className="project-preview-text">{project.title.charAt(0)}</span>
-            </div>
-            <div className="project-info">
-              <div className="project-header">
-                <h3 className="project-name">{project.title}</h3>
-                <span className="project-year">{project.year}</span>
-              </div>
-              <p className="project-description">{project.description}</p>
-              <div className="project-footer">
-                <div className="project-tech">
-                  {project.techStack.map((icon) => (
-                    <img
-                      key={icon}
-                      src={`${DEVICON_BASE}${icon}.svg`}
-                      alt={icon.split("/")[0]}
-                      title={icon.split("/")[0]}
-                      width={18}
-                      height={18}
-                      loading="lazy"
-                    />
-                  ))}
-                </div>
-                <div className="project-links">
-                  {project.github && (
-                    <a href={project.github} target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                      </svg>
-                    </a>
-                  )}
-                  {project.live && (
-                    <a href={project.live} target="_blank" rel="noopener noreferrer" className="project-view">
-                      View <span>→</span>
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-          </article>
+    <>
+      <Console
+        ref={consoleRef}
+        project={loadedProject}
+        accent={loadedAccent}
+        secret={loadedProject === SECRET_PROJECT}
+        selected={current ? label(current) : ""}
+        progress={progress}
+        lockedNotice={lockedNotice}
+        onInput={input}
+      />
+
+      <div className="filters" role="group" aria-label="Filter projects">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            className="btn btn-small"
+            aria-pressed={filter === f.id}
+            disabled={busy}
+            onClick={() => {
+              setFilter(f.id);
+              setPos({ index: 0, prev: 0 });
+            }}
+          >
+            {f.label}
+          </button>
         ))}
       </div>
-      {PROJECTS.length > INITIAL_PROJECTS_COUNT && (
-        <button
-          className="projects-toggle"
-          onClick={() => setExpanded((e) => !e)}
-        >
-          {expanded ? "Show less" : `Show more (${PROJECTS.length - INITIAL_PROJECTS_COUNT})`}
+
+      <div className="reel-wrap">
+        <button type="button" className="btn reel-arrow" onClick={() => !busy && step(-1)} aria-label="Previous cartridge">
+          <PixelIcon name="arrow" px={3} className="flip-left" />
         </button>
-      )}
-    </section>
+        <div
+          ref={reelRef}
+          className={`reel${spinning ? " is-spinning" : ""}`}
+          tabIndex={0}
+          role="group"
+          aria-roledescription="carousel"
+          aria-label="Project cartridges. Left and right arrow keys turn the reel, Enter fires the cartridge in front into the console."
+          aria-describedby="reel-status"
+          onKeyDown={keys}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {list.map((item, i) => {
+            const { p, accent, locked, secret } = item;
+            const o = offset(i, index);
+            const before = offset(i, pos.prev % n);
+            const center = o === 0;
+            return (
+              <div
+                key={p.title}
+                className={[
+                  "reel-item",
+                  `cart accent-${accent}`,
+                  center && "is-center",
+                  Math.abs(o) > hideFar && "is-far",
+                  Math.abs(o - before) > 2 && "is-jump",
+                  center && firing && "is-firing",
+                  p.title === loaded && "is-loaded",
+                  locked && "is-locked",
+                  secret && !locked && "is-secret",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={{ "--o": o, "--abs": Math.abs(o) } as CSSProperties}
+                aria-hidden={!center}
+                onClick={() => {
+                  if (swipe.current?.moved || busy) return;
+                  if (center) fire();
+                  else go(i);
+                }}
+              >
+                <article>
+                  <p className="cart-top">
+                    <span>{locked ? "????" : p.year}</span>
+                    <span className="cart-tag">{secret ? "Secret" : isWork(p) ? "At work" : "Side project"}</span>
+                  </p>
+                  <h3 className="cart-label">{locked ? "???" : p.title}</h3>
+                  {locked ? (
+                    <div className="cart-gems cart-lock">
+                      <PixelIcon name="lock" px={4} />
+                      <span>Needs the 1986 cheat code</span>
+                    </div>
+                  ) : (
+                    <ul className="cart-gems" aria-label="Built with">
+                      {p.techStack.map((icon) => {
+                        const name = techName(icon);
+                        return (
+                          <li key={icon}>
+                            <span className="gem" style={{ background: gem(name) }} />
+                            {name}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <p className="cart-state">
+                    {p.title === loaded ? "In the console" : center ? (locked ? "Fire it to find out more" : "Press Fire to load") : ""}
+                  </p>
+                </article>
+              </div>
+            );
+          })}
+        </div>
+        <button type="button" className="btn reel-arrow" onClick={() => !busy && step(1)} aria-label="Next cartridge">
+          <PixelIcon name="arrow" px={3} />
+        </button>
+      </div>
+
+      <div className="reel-bar">
+        <p id="reel-status" className="reel-count" aria-live="polite">
+          <span className="reel-num">
+            {index + 1}/{n}
+          </span>
+          {current ? label(current) : ""}
+        </p>
+        <div className="reel-actions">
+          <button type="button" className="btn" onClick={spin} disabled={busy || n < 2}>
+            Spin
+          </button>
+          <button type="button" className="btn btn-fire" onClick={fire} disabled={busy}>
+            <PixelIcon name="arrow" px={2} className="flip-up" />
+            Fire
+          </button>
+        </div>
+      </div>
+      <p className="reel-hint">Scroll, swipe or use the arrow keys to turn the reel. Fire sends the cartridge in front into the console.</p>
+    </>
   );
 }
